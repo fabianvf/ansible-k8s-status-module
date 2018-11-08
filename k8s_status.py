@@ -1,10 +1,9 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# (c) 2018, Chris Houseknecht <@chouseknecht>
-# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
-
 from __future__ import absolute_import, division, print_function
+
+import copy
 
 from ansible.module_utils.k8s.common import AUTH_ARG_SPEC, COMMON_ARG_SPEC, KubernetesAnsibleModule
 
@@ -73,7 +72,7 @@ options:
     - Token used to authenticate with the API. Can also be specified via K8S_AUTH_API_KEY environment variable.
   kubeconfig:
     description:
-    - Path to an existing Kubernetes config file. If not provided, and no other connection
+    - Path to an instance Kubernetes config file. If not provided, and no other connection
       options are provided, the openshift client will attempt to load the default
       configuration file from I(~/.kube/config.json). Can also be specified via K8S_AUTH_KUBECONFIG environment
       variable.
@@ -119,7 +118,7 @@ TODO
 RETURN = '''
 result:
   description:
-  - If a change was made, will return the patched object, otherwise returns the existing object.
+  - If a change was made, will return the patched object, otherwise returns the instance object.
   returned: success
   type: complex
   contains:
@@ -179,6 +178,7 @@ class KubernetesAnsibleStatusModule(KubernetesAnsibleModule):
         self.api_version = self.params.get('api_version')
         self.name = self.params.get('name')
         self.namespace = self.params.get('namespace')
+        self.force = self.params.get('force')
 
         self.status = self.params.get('status')
         self.conditions = self.params.get('conditions')
@@ -190,38 +190,67 @@ class KubernetesAnsibleStatusModule(KubernetesAnsibleModule):
     def execute_module(self):
         self.client = self.get_api_client()
 
-        return_attributes = dict(changed=False, result=dict())
-
         resource = self.find_resource(self.kind, self.api_version, fail=True)
         if 'status' not in resource.subresources:
             self.fail_json(msg='Resource {}.{} does not support the status subresource'.format(resource.api_version, resource.kind))
 
         try:
-            existing = resource.get(name=name, namespace=namespace).to_dict()
-            return_attributes['result'] = existing
+            instance = resource.get(name=self.name, namespace=self.namespace).to_dict()
         except DynamicApiError as exc:
             self.fail_json(msg='Failed to retrieve requested object: {0}'.format(exc),
                            error=exc.summary())
 
-        if existing['status'] == status:
-            self.exit_json(**return_attributes)
+        if self.force:
+            self.exit_json(**self.replace(resource, instance))
+        else:
+            self.exit_json(**self.patch(resource, instance))
 
-        body = {
-            'apiVersion': resource.api_version,
-            'kind': resource.kind,
-            'metadata': {
-                'name': self.name,
-                'namespace': self.namespace,
-            },
-            'status': self.status
+    def replace(self, resource, instance):
+        if self.status == instance['status']:
+            return {'result': instance, 'changed': False}
+        instance['status'] = self.status
+        try:
+            result = resource.status.replace(body=instance).to_dict(),
+        except DynamicApiError as exc:
+            self.fail_json(msg='Failed to replace status: {}'.format(exc), error=exc.summary())
+
+        return {
+            'result': result,
+            'changed': True
         }
 
+    def patch(self, resource, instance):
+        if self.object_contains(instance['status'], self.status):
+            return {'result': instance, 'changed': False}
+        instance['status'] = self.status
         try:
-            return_attributes['result'] = resource.status.patch(body=body, content_type='application/merge-patch+json')
+            result = resource.status.patch(body=instance, content_type='application/merge-patch+json').to_dict()
         except DynamicApiError as exc:
-            self.fail_json(msg='Failed to patch status: {}'.format(exc), error=exc.summary())
+            self.fail_json(msg='Failed to replace status: {}'.format(exc), error=exc.summary())
 
-        self.exit_json(**return_attributes)
+        return {
+            'result': result,
+            'changed': True
+        }
+
+    def object_contains(self, obj, subset):
+        def dict_is_subset(obj, subset):
+            return all([mapping.get(type(obj.get(k)), mapping['default'])(obj.get(k), v) for (k, v) in subset.items()])
+
+        def list_is_subset(obj, subset):
+            return all([mapping.get(type(obj[i]), mapping['default'])(obj[i], v) for (i, v) in enumerate(subset)])
+
+        def values_match(obj, subset):
+            return obj == subset
+
+        mapping = {
+            dict: dict_is_subset,
+            list: list_is_subset,
+            tuple: list_is_subset,
+            'default': values_match
+        }
+
+        return dict_is_subset(obj, subset)
 
     @property
     def argspec(self):
