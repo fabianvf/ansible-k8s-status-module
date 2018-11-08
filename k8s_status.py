@@ -64,6 +64,11 @@ options:
       providing a full resource definition. Use in conjunction with I(api_version), I(kind), and I(name)
       to identify a specfic object. If I(resource definition) is provided, the I(metadata.namespace) value
       from the I(resource_definition) will override this option.
+  force:
+    description:
+    - If set to C(True), and I(state) is C(present), an existing object will be replaced.
+    default: false
+    type: bool
   host:
     description:
     - Provide a URL for accessing the API. Can also be specified via K8S_AUTH_HOST environment variable.
