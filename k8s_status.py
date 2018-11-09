@@ -71,13 +71,13 @@ options:
     required: yes
   name:
     description:
-    - Use to specify an object name.Use in conjunction with I(api_version), I(kind) and I(namespace) to identify a
+    - Use to specify an object name. Use in conjunction with I(api_version), I(kind) and I(namespace) to identify a
       specific object.
     required: yes
   namespace:
     description:
-    - Use to specify an object namespace.Use in conjunction with I(api_version), I(kind), and I(name)
-      to identify a specfic object.
+    - Use to specify an object namespace. Use in conjunction with I(api_version), I(kind), and I(name)
+      to identify a specific object.
   force:
     description:
     - If set to C(True), the status will be set using `PUT` rather than `PATCH`, replacing the full status object.

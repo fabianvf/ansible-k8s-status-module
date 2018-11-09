@@ -48,8 +48,8 @@ Sets the status field on a Kubernetes API resource. Only should be used if you a
 | key_file  |  |   |  | |  Path to a key file used to authenticate with the API. Can also be specified via K8S_AUTH_KEY_FILE environment variable.  |
 | kind  |  |   yes  |  | |  Use to specify an object model. Use in conjunction with I(api_version), I(name), and I(namespace) to identify a specific object.  |
 | kubeconfig  |  |   |  | |  Path to an instance Kubernetes config file. If not provided, and no other connection options are provided, the openshift client will attempt to load the default configuration file from I(~/.kube/config.json). Can also be specified via K8S_AUTH_KUBECONFIG environment variable.  |
-| name  |  |   yes  |  | |  Use to specify an object name.Use in conjunction with I(api_version), I(kind) and I(namespace) to identify a specific object.  |
-| namespace  |  |   |  | |  Use to specify an object namespace.Use in conjunction with I(api_version), I(kind), and I(name) to identify a specfic object.  |
+| name  |  |   yes  |  | |  Use to specify an object name. Use in conjunction with I(api_version), I(kind) and I(namespace) to identify a specific object.  |
+| namespace  |  |   |  | |  Use to specify an object namespace. Use in conjunction with I(api_version), I(kind), and I(name) to identify a specific object.  |
 | password  |  |   |  | |  Provide a password for authenticating with the API. Can also be specified via K8S_AUTH_PASSWORD environment variable.  |
 | ssl_ca_cert  |  |   |  | |  Path to a CA certificate used to authenticate with the API. Can also be specified via K8S_AUTH_SSL_CA_CERT environment variable.  |
 | status  |  |   |  | |  {u'A object containing `key': u'value` pairs that will be set on the status object of the specified resource.'}  One of I(status) or I(conditions) is required.  |
