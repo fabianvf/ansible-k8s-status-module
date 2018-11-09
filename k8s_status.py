@@ -3,6 +3,7 @@
 
 from __future__ import absolute_import, division, print_function
 
+import re
 import copy
 
 from ansible.module_utils.k8s.common import AUTH_ARG_SPEC, COMMON_ARG_SPEC, KubernetesAnsibleModule
@@ -36,37 +37,42 @@ description:
     implement a controller for the resource being modified.
 
 options:
+  status:
+    type: dict
+    description:
+    - A object containing `key: value` pairs that will be set on the status object of the specified resource.
+  conditions:
+    type: list
+    description:
+    - 'A list of condition objects that will be set on the status.conditions field of the specified resource. Unless I(force) is
+      C(true) the specified conditions will be merged with the conditions already set on the status field of the specified resource.
+      Each element in the list will be validated according to the conventions specified in the
+      [Kubernetes API conventions document](https://github.com/kubernetes/community/blob/master/contributors/devel/api-conventions.md#spec-and-status).
+      The fields supported for each condition are: `type` (required), `status` (required, one of "True", "False", "Unknown"),
+      `reason` (single CamelCase word), `message`, `lastHeartbeatTime` (RFC3339 datetime string), and `lastTransitionTime` (RFC3339 datetime string).'
   api_version:
     description:
-    - Use to specify the API version. Use to create, delete, or discover an object without providing a full
-      resource definition. Use in conjunction with I(kind), I(name), and I(namespace) to identify a
-      specific object. If I(resource definition) is provided, the I(apiVersion) from the I(resource_definition)
-      will override this option.
+    - Use to specify the API version. Use in conjunction with I(kind), I(name), and I(namespace) to identify a
+      specific object.
     default: v1
     aliases:
     - api
     - version
   kind:
     description:
-    - Use to specify an object model. Use to create, delete, or discover an object without providing a full
-      resource definition. Use in conjunction with I(api_version), I(name), and I(namespace) to identify a
-      specific object. If I(resource definition) is provided, the I(kind) from the I(resource_definition)
-      will override this option.
+    - Use to specify an object model. Use in conjunction with I(api_version), I(name), and I(namespace) to identify a
+      specific object.
   name:
     description:
-    - Use to specify an object name. Use to create, delete, or discover an object without providing a full
-      resource definition. Use in conjunction with I(api_version), I(kind) and I(namespace) to identify a
-      specific object. If I(resource definition) is provided, the I(metadata.name) value from the
-      I(resource_definition) will override this option.
+    - Use to specify an object name.Use in conjunction with I(api_version), I(kind) and I(namespace) to identify a
+      specific object.
   namespace:
     description:
-    - Use to specify an object namespace. Useful when creating, deleting, or discovering an object without
-      providing a full resource definition. Use in conjunction with I(api_version), I(kind), and I(name)
-      to identify a specfic object. If I(resource definition) is provided, the I(metadata.namespace) value
-      from the I(resource_definition) will override this option.
+    - Use to specify an object namespace.Use in conjunction with I(api_version), I(kind), and I(name)
+      to identify a specfic object.
   force:
     description:
-    - If set to C(True), and I(state) is C(present), an existing object will be replaced.
+    - If set to C(True), the status will be set using `PUT` rather than `PATCH`, replacing the full status object.
     default: false
     type: bool
   host:
@@ -117,7 +123,20 @@ requirements:
 '''
 
 EXAMPLES = '''
-TODO
+- name: Set status on TestCR Custom Resource
+  k8s_status:
+    api_version: apps.example.com/v1alpha1
+    kind: TestCR
+    name: my-test
+    namespace: testing
+    status:
+        hello: world
+    conditions:
+    - type: Available
+      status: "False"
+      reason: FailedPing
+      message: "The 'fakeservice' service did not respond to ping."
+      lastTransitionTime: "{{ ansible_date_time.iso8601 }}"
 '''
 
 RETURN = '''
@@ -152,18 +171,48 @@ result:
 
 def condition_array(conditions):
 
-    def validate_condition(condition):
-        # TODO
-        return True
+    VALID_KEYS = ['type', 'status', 'reason', 'message', 'lastHeartbeatTime', 'lastTransitionTime']
+    REQUIRED = ['type', 'status']
+    CAMEL_CASE = re.compile(r'^(?:[A-Z]*[a-z]*)+$')
+    RFC3339_datetime = re.compile(r'^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d)?(\.\d+)?(([+-]\d\d:\d\d)|Z)$')
 
-    for condition in conditions:
-        validate_condition(condition)
-    return conditions
+    def validate_condition(condition):
+        if not isinstance(condition, dict):
+            raise ValueError('`conditions` must be a list of objects')
+        if isinstance(condition.get('status'), bool):
+            condition['status'] = 'True' if condition['status'] else 'False'
+
+        for key in condition.keys():
+            if key not in VALID_KEYS:
+                raise ValueError('{} is not a valid field for a condition, accepted fields are {}'.format(key, VALID_KEYS))
+        for key in REQUIRED:
+            if not condition.get(key):
+                raise ValueError('Condition `{}` must be set'.format(key))
+
+        if condition['status'] not in ['True', 'False', 'Unknown']:
+            raise ValueError('Condition `status` must be one of ["True", "False", "Unknown"], not {}'.format(condition['status']))
+
+        if condition.get('reason') and not re.match(CAMEL_CASE, condition['reason']):
+            raise ValueError('Condition `reason` must be a single, CamelCase word')
+
+        for key in ['lastHeartBeatTime', 'lastTransitionTime']:
+            if condition.get(key) and not re.match(RFC3339_datetime, condition[key]):
+                raise ValueError('`{}` must be a RFC3339 compliant datetime string'.format(key))
+
+        return condition
+
+    return [validate_condition(c) for c in conditions]
 
 
 STATUS_ARG_SPEC = {
-    'status': {'type': 'dict', 'required': False},
-    'conditions': {'type': condition_array, 'required': False}
+    'status': {
+        'type': 'dict',
+        'required': False
+    },
+    'conditions': {
+        'type': condition_array,
+        'required': False
+    }
 }
 
 
@@ -188,7 +237,9 @@ class KubernetesAnsibleStatusModule(KubernetesAnsibleModule):
         self.status = self.params.get('status')
         self.conditions = self.params.get('conditions')
 
-        # TODO: Do we want to explicitly fail if conditions is set in the status blob?
+        if self.conditions and self.status and self.status.get('conditions'):
+            raise ValueError("You cannot specify conditions in both the `status` and `conditions` parameters")
+
         if self.conditions:
             self.status['conditions'] = self.conditions
 
@@ -204,6 +255,8 @@ class KubernetesAnsibleStatusModule(KubernetesAnsibleModule):
         except DynamicApiError as exc:
             self.fail_json(msg='Failed to retrieve requested object: {0}'.format(exc),
                            error=exc.summary())
+        # Make sure status is at least initialized to an empty dict
+        instance['status'] = instance.get('status', {})
 
         if self.force:
             self.exit_json(**self.replace(resource, instance))
@@ -227,7 +280,7 @@ class KubernetesAnsibleStatusModule(KubernetesAnsibleModule):
     def patch(self, resource, instance):
         if self.object_contains(instance['status'], self.status):
             return {'result': instance, 'changed': False}
-        instance['status'] = self.status
+        instance['status'] = self.merge_status(instance['status'], self.status)
         try:
             result = resource.status.patch(body=instance, content_type='application/merge-patch+json').to_dict()
         except DynamicApiError as exc:
@@ -238,12 +291,34 @@ class KubernetesAnsibleStatusModule(KubernetesAnsibleModule):
             'changed': True
         }
 
+    def merge_status(self, old, new):
+        old_conditions = old.get('conditions', [])
+        new_conditions = new.get('conditions', [])
+        if not (old_conditions and new_conditions):
+            return new
+
+        merged = copy.deepcopy(old_conditions)
+
+        for condition in new_conditions:
+            idx = self.get_condition_idx(merged, condition['type'])
+            if idx:
+                merged[idx] = condition
+            else:
+                merged.append(condition)
+        new['conditions'] = merged
+        return new
+
+    def get_condition_idx(self, conditions, name):
+        for i, condition in enumerate(conditions):
+            if condition.get('type') == name:
+                return i
+
     def object_contains(self, obj, subset):
         def dict_is_subset(obj, subset):
             return all([mapping.get(type(obj.get(k)), mapping['default'])(obj.get(k), v) for (k, v) in subset.items()])
 
         def list_is_subset(obj, subset):
-            return all([mapping.get(type(obj[i]), mapping['default'])(obj[i], v) for (i, v) in enumerate(subset)])
+            return all(item in obj for item in subset)
 
         def values_match(obj, subset):
             return obj == subset
