@@ -29,8 +29,7 @@ short_description: Update the status for a Kubernetes API resource
 
 version_added: "2.7"
 
-author:
-    - "Fabian von Feilitzsch (@fabianvf)"
+author: "Fabian von Feilitzsch (@fabianvf)"
 
 description:
   - Sets the status field on a Kubernetes API resource. Only should be used if you are using Ansible to
@@ -41,20 +40,27 @@ options:
     type: dict
     description:
     - A object containing `key: value` pairs that will be set on the status object of the specified resource.
+    - One of I(status) or I(conditions) is required.
   conditions:
     type: list
     description:
-    - 'A list of condition objects that will be set on the status.conditions field of the specified resource. Unless I(force) is
-      C(true) the specified conditions will be merged with the conditions already set on the status field of the specified resource.
-      Each element in the list will be validated according to the conventions specified in the
+    - A list of condition objects that will be set on the status.conditions field of the specified resource.
+    - Unless I(force) is C(true) the specified conditions will be merged with the conditions already set on the status field of the specified resource.
+    - Each element in the list will be validated according to the conventions specified in the
       [Kubernetes API conventions document](https://github.com/kubernetes/community/blob/master/contributors/devel/api-conventions.md#spec-and-status).
-      The fields supported for each condition are: `type` (required), `status` (required, one of "True", "False", "Unknown"),
-      `reason` (single CamelCase word), `message`, `lastHeartbeatTime` (RFC3339 datetime string), and `lastTransitionTime` (RFC3339 datetime string).'
+    - 'The fields supported for each condition are:
+      `type` (required),
+      `status` (required, one of "True", "False", "Unknown"),
+      `reason` (single CamelCase word),
+      `message`,
+      `lastHeartbeatTime` (RFC3339 datetime string), and
+      `lastTransitionTime` (RFC3339 datetime string).'
+    - One of I(status) or I(conditions) is required.'
   api_version:
     description:
     - Use to specify the API version. Use in conjunction with I(kind), I(name), and I(namespace) to identify a
       specific object.
-    default: v1
+    required: yes
     aliases:
     - api
     - version
@@ -62,10 +68,12 @@ options:
     description:
     - Use to specify an object model. Use in conjunction with I(api_version), I(name), and I(namespace) to identify a
       specific object.
+    required: yes
   name:
     description:
     - Use to specify an object name.Use in conjunction with I(api_version), I(kind) and I(namespace) to identify a
       specific object.
+    required: yes
   namespace:
     description:
     - Use to specify an object namespace.Use in conjunction with I(api_version), I(kind), and I(name)
