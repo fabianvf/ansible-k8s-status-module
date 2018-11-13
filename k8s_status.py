@@ -131,7 +131,7 @@ requirements:
 '''
 
 EXAMPLES = '''
-- name: Set status on TestCR Custom Resource
+- name: Set custom status fields on TestCR
   k8s_status:
     api_version: apps.example.com/v1alpha1
     kind: TestCR
@@ -139,12 +139,32 @@ EXAMPLES = '''
     namespace: testing
     status:
         hello: world
+        custom: entries
+
+- name: Update the standard condition of an Ansible Operator
+  k8s_status:
+    api_version: apps.example.com/v1alpha1
+    kind: TestCR
+    name: my-test
+    namespace: testing
+    conditions:
+    - type: Running
+      status: "True"
+      reason: MigrationStarted
+      message: "Migration from v2 to v3 has begun"
+      lastTransitionTime: "{{ ansible_date_time.iso8601 }}"
+
+- name: |
+    Create custom conditions. WARNING: The default Ansible Operator status management
+    will never overwrite custom conditions, so they will persist indefinitely. If you
+    want the values to change or be removed, you will need to clean them up manually.
+  k8s_status:
     conditions:
     - type: Available
       status: "False"
-      reason: FailedPing
-      message: "The 'fakeservice' service did not respond to ping."
-      lastTransitionTime: "{{ ansible_date_time.iso8601 }}"
+      reason: PingFailed
+      message: "The service did not respond to a ping"
+
 '''
 
 RETURN = '''
@@ -242,8 +262,8 @@ class KubernetesAnsibleStatusModule(KubernetesAnsibleModule):
         self.namespace = self.params.get('namespace')
         self.force = self.params.get('force')
 
-        self.status = self.params.get('status')
-        self.conditions = self.params.get('conditions')
+        self.status = self.params.get('status') or {}
+        self.conditions = self.params.get('conditions') or []
 
         if self.conditions and self.status and self.status.get('conditions'):
             raise ValueError("You cannot specify conditions in both the `status` and `conditions` parameters")

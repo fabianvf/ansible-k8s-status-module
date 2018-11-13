@@ -12,8 +12,8 @@ Version added: 2.7
 ---
 ### Table of Contents
 
-  * [Requirements](#requirements)
-  * [Synopsis](#synopsis)
+* [Requirements](#requirements)
+* [Synopsis](#synopsis)
 * [Options](#options)
 * [Examples](#examples)
 * [Return](#return)
@@ -67,7 +67,7 @@ Sets the status field on a Kubernetes API resource. Only should be used if you a
 ```yaml
 ---
 
-- name: Set status on TestCR Custom Resource
+- name: Set custom status fields on TestCR
   k8s_status:
     api_version: apps.example.com/v1alpha1
     kind: TestCR
@@ -75,12 +75,32 @@ Sets the status field on a Kubernetes API resource. Only should be used if you a
     namespace: testing
     status:
         hello: world
+        custom: entries
+
+- name: Update the standard condition of an Ansible Operator
+  k8s_status:
+    api_version: apps.example.com/v1alpha1
+    kind: TestCR
+    name: my-test
+    namespace: testing
+    conditions:
+    - type: Running
+      status: "True"
+      reason: MigrationStarted
+      message: "Migration from v2 to v3 has begun"
+      lastTransitionTime: "{{ ansible_date_time.iso8601 }}"
+
+- name: |
+    Create custom conditions. WARNING: The default Ansible Operator status management
+    will never overwrite custom conditions, so they will persist indefinitely. If you
+    want the values to change or be removed, you will need to clean them up manually.
+  k8s_status:
     conditions:
     - type: Available
       status: "False"
-      reason: FailedPing
-      message: "The 'fakeservice' service did not respond to ping."
-      lastTransitionTime: "{{ ansible_date_time.iso8601 }}"
+      reason: PingFailed
+      message: "The service did not respond to a ping"
+
 
 ```
 
